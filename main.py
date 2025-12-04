@@ -219,6 +219,7 @@ def call_gpt(message_text: str) -> Dict[str, Any]:
 def insert_trade_row(row: Dict[str, Any]) -> bool:
     """
     Insert a single trade row into public.new_trades via Supabase REST.
+    Logs full error details if it fails.
     """
     url = f"{SUPABASE_URL}/rest/v1/new_trades"
     headers = {
@@ -231,12 +232,20 @@ def insert_trade_row(row: Dict[str, Any]) -> bool:
     # Log what we're inserting
     print("🟢 INSERTING ROW INTO SUPABASE:", json.dumps(row, indent=2))
 
-    resp = requests.post(url, headers=headers, data=json.dumps(row))
-    if resp.status_code not in (200, 201, 204):
-        print("🔴 SUPABASE INSERT FAILED:", resp.status_code, resp.text)
+    try:
+        resp = requests.post(url, headers=headers, data=json.dumps(row))
+    except Exception as e:
+        print("🔴 SUPABASE INSERT EXCEPTION:", repr(e))
         return False
 
-    return True
+    if resp.status_code in (200, 201, 204):
+        print("✅ SUPABASE INSERT OK, status:", resp.status_code)
+        return True
+
+    # Log full error body from Supabase/PostgREST
+    print("🔴 SUPABASE INSERT FAILED:", resp.status_code, resp.text)
+    return False
+
 
 
 # --------------------------------------------------------
