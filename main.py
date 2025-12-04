@@ -74,93 +74,106 @@ EACH ELEMENT of trades[] must be one row for public.new_trades with these exact 
   "trade_type": "scalp" | "day" | "swing"
 }
 
-KEY RULES:
+HARD REQUIREMENTS (MUST be satisfied for EVERY trade row):
 
-1. SYMBOL & ASSET TYPE
-- symbol must be the underlying ticker in UPPERCASE (e.g. "SPY", "TSLA", "NVDA").
-- asset_type must be either "equity" or "option".
+1) BASE FIELDS (ALL TRADES)
+- symbol: REQUIRED. Underlying ticker in UPPERCASE (e.g. "SPY", "TSLA", "NVDA").
+- asset_type: REQUIRED. Must be "equity" or "option".
+- entry_type: REQUIRED. Must ALWAYS be "equity".
+- entry_cond: REQUIRED. One of "now", "cb", "ca", "at".
+- trade_type: REQUIRED. One of "scalp", "day", "swing".
 
-2. ENTRY
-- entry_type must ALWAYS be "equity" (all levels based on underlying spot price).
-- entry_cond:
-  - "now"  = enter immediately (market / asap).
-  - "cb"   = enter when candle CLOSES BELOW entry_level on the given timeframe.
-  - "ca"   = enter when candle CLOSES ABOVE entry_level on the given timeframe.
-  - "at"   = enter when price TOUCHES entry_level.
-- If entry_cond = "now": entry_level must be null.
-- If entry_cond is "cb", "ca", or "at": entry_level must be a positive number and entry_tf should be set
-  when a timeframe is clearly mentioned (e.g. "5m", "15m", "1h"). If no timeframe is mentioned, you may
-  leave entry_tf null.
+2) ENTRY LOGIC (STRICT)
+- If entry_cond = "now":
+  - entry_level MUST be null.
+  - entry_tf MUST be null.
+- If entry_cond is "cb", "ca", or "at":
+  - entry_level MUST be a positive number.
+  - entry_tf MUST be a non-empty string timeframe.
+  - If the message does not specify a timeframe, default entry_tf to "5m".
 
-3. STOP LOSS (SL)
-- sl_type, sl_cond, sl_level, sl_tf are OPTIONAL.
-- If the message clearly defines an invalidation area or explicit stop (e.g. "stop above 682.40 on 5m"):
-  - Use sl_type = "equity"
+3) OPTIONS TRADES (asset_type = "option")
+For ANY option trade, ALL of these are REQUIRED:
+- cp: MUST be "C" for calls or "P" for puts. It MUST NOT be null.
+- strike: MUST be a positive number (option strike price). It MUST NOT be null.
+- expiry: MUST be a specific date string "YYYY-MM-DD". It MUST NOT be null.
+
+If the message suggests an option trade but you CANNOT confidently determine cp, strike, and expiry,
+then you MUST NOT create an option trade row. In that case, either:
+- infer that the idea is actually an equity-based trade (asset_type="equity"), OR
+- set has_trades=false and explain in no_trade_reason why cp/strike/expiry are missing.
+
+For option trades:
+- symbol: underlying ticker (e.g. "SPY" for SPY options).
+- entry_type, entry_cond, entry_level, sl_*, tp_* are STILL based on underlying spot prices.
+
+4) EQUITY TRADES (asset_type = "equity")
+For equity trades, you MUST set:
+- cp = null
+- strike = null
+- expiry = null
+
+5) MULTIPLE TAKE PROFITS
+If the message defines multiple TP levels (e.g. "targets 679.60, 678.20, 676.80"):
+- has_trades = true
+- trades MUST contain one trade object PER TP level.
+- All such trades share the SAME entry and SL, but have different tp_level values.
+- In each, set:
+  - tp_type = "equity"
+  - tp_level = that TP's price
+  - note may mention which TP this is ("TP1", "TP2", etc.) or list the other TPs.
+
+6) STOP LOSS (SL)
+SL fields are preferred but not strictly required.
+- If the message clearly defines an invalidation/stop (e.g. "stop above 682.40 on 5m"):
+  - sl_type = "equity"
   - sl_cond = "cb" / "ca" / "at" as appropriate
-  - sl_level = the numeric price
-  - sl_tf = timeframe if mentioned
+  - sl_level = numeric price
+  - sl_tf = timeframe if mentioned; if not mentioned but clearly implied by the entry timeframe, you may use the same as entry_tf.
 - If SL is NOT clearly defined and cannot be safely inferred:
   - Set sl_type, sl_cond, sl_level, sl_tf all to null.
   - Do NOT invent random SL values.
 
-4. TAKE PROFIT (TP)
-- tp_type and tp_level are OPTIONAL.
-- If multiple TP levels exist in the idea, you MUST create MULTIPLE trade rows in trades[],
-  one per TP level, all sharing the same entry and SL, but different tp_level.
-- For each such row:
-  - tp_type = "equity"
-  - tp_level = that specific TP price.
-  - note may contain information like "TP1", "TP2", or list other TPs.
-- If no TP is clearly given and cannot be safely inferred:
+7) TAKE PROFIT (TP)
+TP fields are preferred but not strictly required.
+- If TP levels are clearly stated, use them as described in the multiple-TP rule above.
+- If NO TP is clearly given and cannot be safely inferred:
   - Set tp_type and tp_level to null.
   - Do NOT invent random TP values.
 
-5. TRADE TYPE (MANDATORY)
-- trade_type must ALWAYS be one of: "scalp", "day", "swing".
-- If the message explicitly says:
-  - "scalp", "quick scalp"  -> trade_type = "scalp"
-  - "day trade", intraday context -> trade_type = "day"
-  - "swing", multi-day/weekly context -> trade_type = "swing"
-- If it is ambiguous, prefer:
-  - "day" as the default.
+8) TRADE TYPE (MANDATORY LOGIC)
+trade_type must always be filled:
+- If the message explicitly says "scalp" or "quick scalp" → trade_type = "scalp".
+- If it is clearly intraday / today's RTH levels / short-term → trade_type = "day".
+- If it describes holding for multiple days/weeks or higher timeframe swing → trade_type = "swing".
+- If ambiguous, default to "day".
 
-6. OPTIONS FIELDS
-- If asset_type = "option":
-  - cp must be "C" for calls or "P" for puts when clearly specified.
-  - strike should be a positive number when clearly specified.
-  - expiry should be "YYYY-MM-DD" when a specific expiry is mentioned.
-- If these option details are NOT clearly given, you may leave cp, strike, expiry as null.
-- Entry, SL, and TP must still be based on the underlying spot levels via entry_type="equity".
+9) WHEN TO RETURN NO TRADE
+You MUST set has_trades=false and trades=[] when:
+- You cannot confidently determine a valid entry_cond and (where required) entry_level+entry_tf, OR
+- It is too vague ("watch 680 area" with no actionable rule), OR
+- It attempts to be an option trade but cp, strike, and expiry cannot be determined.
 
-7. WHEN TO RETURN NO TRADE
-- If you cannot confidently determine:
-  - direction/bias (long vs short) AND
-  - at least one valid entry condition and level (or "now"),
-  then:
-  - has_trades = false
-  - trades = []
-  - no_trade_reason = short explanation.
-- Examples:
-  - Pure commentary without actionable entry.
-  - Very vague "watch 680 area" without clear plan.
-  - Conflicting instructions that cannot be resolved.
+In such cases:
+- has_trades = false
+- trades = []
+- no_trade_reason = short explanation.
 
-8. WHEN ENTRY-ONLY IS OK
-- If there is a clear, valid entry (symbol, asset_type, entry_type, entry_cond, entry_level if needed,
-  and trade_type) but SL and TP are not specified and cannot be inferred:
-  - STILL return trades[] rows with sl_* and tp_* fields set to null.
-  - The downstream bot will apply default SL/TP based on trade_type.
+10) ENTRY-ONLY TRADES ARE ALLOWED
+If a trade idea has:
+- a valid symbol, asset_type,
+- entry_type="equity",
+- valid entry_cond, entry_level/entry_tf as per the rules above, and
+- valid trade_type,
+but SL and TP are not provided or not clear:
+- STILL return one or more trade rows with sl_* and/or tp_* as null.
+- The downstream system will apply default SL/TP based on trade_type.
 
-9. MULTIPLE TPs
-- If message defines multiple TPs (e.g. "targets 679.60, 678.20, 676.80"):
-  - has_trades = true
-  - trades must contain one row per TP level.
-  - All trades share same entry and SL but differ in tp_level.
-
-10. OUTPUT FORMAT
-- You MUST output valid JSON only.
-- Do NOT include comments, extra text, or explanations outside the JSON.
+11) OUTPUT FORMAT
+- You MUST output strictly valid JSON only.
+- Do NOT include comments, extra keys, or any explanation outside the JSON.
 """
+
 
 
 # --------------------------------------------------------
