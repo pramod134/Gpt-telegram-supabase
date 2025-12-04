@@ -55,7 +55,7 @@ EACH ELEMENT of trades[] must be one row for public.new_trades with these exact 
 {
   "symbol": string,
   "asset_type": "option",
-  "cp": "C" or "P",
+  "cp": "call" or "put",
   "strike": number,
   "expiry": "YYYY-MM-DD",
   "qty": integer or null,
@@ -97,7 +97,7 @@ HARD REQUIREMENTS (MUST be satisfied for EVERY trade row):
 
 3) OPTIONS FIELDS (ALWAYS REQUIRED)
 For EVERY trade row (since we always trade options):
-- cp: MUST be "C" (calls) or "P" (puts). MUST NOT be null.
+- cp: MUST be "call" (calls) or "put" (puts). MUST NOT be null.
   - If the idea is BULLISH (long, bounce, breakout, target higher): cp = "C".
   - If the idea is BEARISH (short, rejection, breakdown, target lower): cp = "P".
 - strike: MUST be a positive number. MUST NOT be null.
