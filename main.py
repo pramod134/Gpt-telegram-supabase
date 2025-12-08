@@ -87,13 +87,29 @@ HARD REQUIREMENTS (MUST be satisfied for EVERY trade row):
 - trade_type: REQUIRED. One of "scalp", "day", "swing".
 
 2) ENTRY LOGIC (STRICT)
+
+ENTRY_COND vs cp mapping (VERY IMPORTANT)
+- For CALL trades (cp = "call", bullish idea):
+  - entry_cond MUST be either:
+    - "now"  → enter immediately at current market price, OR
+    - "ca"   → enter when price CLOSES ABOVE the specified entry_level on the chosen timeframe.
+  - NEVER use "cb" or "at" as entry_cond when cp = "call".
+
+- For PUT trades (cp = "put", bearish idea):
+  - entry_cond MUST be either:
+    - "now"  → enter immediately at current market price, OR
+    - "cb"   → enter when price CLOSES BELOW the specified entry_level on the chosen timeframe.
+  - NEVER use "ca" or "at" as entry_cond when cp = "put".
+
+General rules:
 - If entry_cond = "now":
   - entry_level MUST be null.
   - entry_tf MUST be null.
-- If entry_cond is "cb", "ca", or "at":
+- If entry_cond is "cb" or "ca":
   - entry_level MUST be a positive number.
   - entry_tf MUST be a non-empty string timeframe.
   - If the message does not specify a timeframe, DEFAULT entry_tf to "5m".
+- Do NOT invent "at" (touch-based) entries for this bot. Use only "now" / "ca" / "cb" according to the cp mapping above.
 
 3) OPTIONS FIELDS (ALWAYS REQUIRED)
 For EVERY trade row (since we always trade options):
@@ -141,15 +157,34 @@ If the message defines multiple TP levels (e.g. "targets 679.60, 678.20, 676.80"
   - note may indicate which TP this is ("TP1", "TP2", etc.) or list the other TPs.
 
 6) STOP LOSS (SL)
+
 SL fields are preferred but not strictly required.
-- If the message clearly defines an invalidation/stop (e.g. "stop above 682.40 on 5m"):
-  - sl_type = "equity".
-  - sl_cond = "cb" / "ca" / "at" as appropriate.
-  - sl_level = numeric price.
-  - sl_tf = timeframe if mentioned; if not mentioned but implied by the entry timeframe, you may use the same as entry_tf.
-- If SL is NOT clearly defined and cannot be safely inferred:
+
+SL_COND vs cp mapping (VERY IMPORTANT)
+- For CALL trades (cp = "call", bullish idea):
+  - If a stop is defined, it MUST be:
+    - sl_type  = "equity"
+    - sl_cond  = "cb"  (stop triggers when price CLOSES BELOW the SL level)
+    - sl_level = numeric price
+    - sl_tf    = timeframe if mentioned; otherwise you may default to the same as entry_tf.
+  - Do NOT use "ca" or "at" for sl_cond when cp = "call".
+
+- For PUT trades (cp = "put", bearish idea):
+  - If a stop is defined, it MUST be:
+    - sl_type  = "equity"
+    - sl_cond  = "ca"  (stop triggers when price CLOSES ABOVE the SL level)
+    - sl_level = numeric price
+    - sl_tf    = timeframe if mentioned; otherwise you may default to the same as entry_tf.
+  - Do NOT use "cb" or "at" for sl_cond when cp = "put".
+
+If the message clearly defines an invalidation/stop (for example:
+- “stop above 682.40 on 5m” for a bearish idea, or
+- “stop below 680.50 on 5m” for a bullish idea):
+  - Map that invalidation into sl_level and sl_cond using the cp rules above.
+
+If SL is NOT clearly defined and cannot be safely inferred:
   - Set sl_type, sl_cond, sl_level, sl_tf all to null.
-  - Do NOT invent random SL values.
+  - Do NOT invent random SL values or conditions.
 
 7) TAKE PROFIT (TP)
 TP fields are preferred but not strictly required.
