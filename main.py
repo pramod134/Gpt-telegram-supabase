@@ -39,6 +39,16 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 SYSTEM_PROMPT = GPT_SYSTEM_PROMPT
 
+# --------------------------------------------------------
+# DEBUG: PRINT GPT SYSTEM PROMPT FROM ENV (SAFE PREVIEW)
+# --------------------------------------------------------
+print("\n================ GPT_SYSTEM_PROMPT DEBUG ================\n")
+print("Length:", len(GPT_SYSTEM_PROMPT))
+print("\n--- START (first 500 chars) ---\n")
+print(GPT_SYSTEM_PROMPT[:500])
+print("\n--- END (last 500 chars) ---\n")
+print(GPT_SYSTEM_PROMPT[-500:])
+print("\n================ END DEBUG ===============================\n")
 
 # --------------------------------------------------------
 # CALL GPT
