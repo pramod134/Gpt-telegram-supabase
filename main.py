@@ -67,6 +67,7 @@ def call_gpt(message_text: str) -> Dict[str, Any]:
     )
     raw = response.choices[0].message.content
     parsed = json.loads(raw)
+    print(f"🔍 GPT returned {len(parsed.get('trades', []))} trades before insert")
     return parsed
 
 
